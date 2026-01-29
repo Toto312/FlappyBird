@@ -5,9 +5,30 @@
 #include <raylib.h>
 #include <raymath.h>
 
+static Texture2D startTex;
+
+static Texture2D buttonTex;
+static Vector2 buttonSize = {
+    40, 14
+};
+
+#define OK_BUTTON ((Rectangle){0,0,buttonSize.x,buttonSize.y})
+
+static Texture2D dieMenuTex;
+
 static Texture2D numberTex;
 static const Vector2 numberSize = {
    12, 18 
+};
+
+static Texture2D numberMediumTex;
+static const Vector2 numberMediumSize = {
+   9, 12 
+};
+
+static Texture2D numberSmallTex;
+static const Vector2 numberSmallSize = {
+   6, 7 
 };
 
 static Texture2D bgTex;
@@ -48,11 +69,6 @@ static const Vector2 pipeSize = {
 static const Vector2 RESOLUTION = bgSize;
 static float scale = 4.f; 
 
-static float OFFSET_START_PIPE = 1000.f;
-static float DISTANCE_BETWEEN_PIPES = 125.f * scale;
-static float DISTANCE_FROM_PIPES = 100.f;
-static const int TOTAL_PIPES = 100;
-
 enum class EntityType {
     Bird,
     Pipe
@@ -73,7 +89,7 @@ struct Entity {
 
     virtual void Update(float dt) {}
 
-    Rectangle GetCol() {
+    virtual Rectangle GetCol() {
         Rectangle coll = rec;
         coll.x -= (rec.width)/2.f;
         coll.y -= (rec.height)/2.f;
@@ -122,6 +138,15 @@ struct Player : public Entity {
 
         rec.y += vel;
     }
+
+    Rectangle GetCol() override {
+        Rectangle col = rec;
+        col.width *= 0.5;
+        col.height *= 0.75;
+        col.x -= (col.width)/2.f;
+        col.y -= (col.height)/2.f;
+        return col;
+    }
 };
 
 struct Pipe : public Entity {
@@ -141,17 +166,27 @@ struct Pipe : public Entity {
 
 std::vector<Entity*> entities;
 
+static float OFFSET_START_PIPE = 500.f;
+static float DISTANCE_BETWEEN_PIPES = 125.f * scale;
+static float DISTANCE_FROM_PIPES = 100.f;
+static const int TOTAL_PIPES = 100;
+
 void StartWorld() {
     entities.push_back(new Player());
 
-    for (int i = 0; i < 40; i++) {
+    for (int i = 0; i < TOTAL_PIPES; i++) {
         Vector2 position = Vector2 {
             i * DISTANCE_BETWEEN_PIPES + OFFSET_START_PIPE,
             (float)GetRandomValue(DISTANCE_FROM_PIPES,GetRenderHeight()-DISTANCE_FROM_PIPES)
         };
+
+        float distance = DISTANCE_FROM_PIPES;
+        if (i >= 50 && i < 75) distance *= 0.9f;
+        else if (i >= 75) distance *= 0.85f;
+
         Vector2 upPos = position, downPos = position;
-        upPos.y += DISTANCE_FROM_PIPES+(GREEN_PIPE_UP.height*scale);
-        downPos.y -= DISTANCE_FROM_PIPES;
+        upPos.y += distance+(GREEN_PIPE_UP.height*scale);
+        downPos.y -= distance;
 
         Entity* upPipe = new Pipe(GREEN_PIPE_UP, upPos);
         Entity* downPipe = new Pipe(GREEN_PIPE_DOWN, downPos);
@@ -169,9 +204,12 @@ void EndWorld() {
 }
 
 int score = 0;
+int best = 0;
+bool playerDead = false;
+bool paused = true;
 
 void UpdateWorld(float dt) {
-    float playerDead = false;
+    if (paused) return;
 
     for (Entity* entity : entities) {
         entity->Update(dt);
@@ -187,37 +225,74 @@ void UpdateWorld(float dt) {
         }
     }
 
-    if (playerDead) {
-        EndWorld();
-        StartWorld();
-        return;
+    Rectangle col = entities[0]->GetCol();
+    if (col.y + col.height < 0 ||
+        col.y - col.height*2 > GetRenderHeight()) {
+        playerDead = true;
     }
 
     float positionX = entities[0]->GetCol().x + entities[0]->GetCol().width - DISTANCE_BETWEEN_PIPES;
     score = (positionX) / DISTANCE_BETWEEN_PIPES;
     if (score < 0) score = 0;
+
+    if (playerDead && best < score) {
+        best = score;
+    }
 }
 
 #include <array>
 #include <charconv>
 
-void DrawNumber(int number, float x, float y) {
+enum {
+    FONT_SIZE_BIG,
+    FONT_SIZE_MEDIUM,
+    FONT_SIZE_SMALL
+};
+
+typedef int FontSize;
+
+Vector2 GetFontSize(FontSize size) {
+    Vector2 numSize;
+    if (size == FONT_SIZE_BIG) {
+        numSize = numberSize;
+    } else if (size == FONT_SIZE_MEDIUM) {
+        numSize = numberMediumSize;
+    } else {
+        numSize = numberSmallSize;
+    }
+    return numSize;
+}
+
+void DrawNumber(int number, float x, float y, FontSize size) {
     const char* str = std::to_string(number).c_str();
     Vector2 pos = (Vector2){x,y};
 
     while((*str!='\0')) {
+        Texture2D tex;
+        Vector2 numSize;
+        if (size == FONT_SIZE_BIG) {
+            tex = numberTex;
+            numSize = numberSize;
+        } else if (size == FONT_SIZE_MEDIUM) {
+            tex = numberMediumTex;
+            numSize = numberMediumSize;
+        } else {
+            tex = numberSmallTex;
+            numSize = numberSmallSize;
+        }
+
         Rectangle rec = {
-            numberSize.x*(*str-'0'), 0,
-            numberSize.x, numberSize.y
+            numSize.x*(*str-'0'), 0,
+            numSize.x, numSize.y
         };  
 
         Rectangle dst = {
             pos.x, pos.y,
-            numberSize.x*scale, numberSize.y*scale
+            numSize.x*scale, numSize.y*scale
         };
 
-        DrawTexturePro(numberTex, rec, dst, Vector2Zero(), 0.f, WHITE);
-        pos.x += numberSize.x;
+        DrawTexturePro(tex, rec, dst, Vector2Zero(), 0.f, WHITE);
+        pos.x += numSize.x*scale*0.8;
 
         str++;
     }
@@ -235,8 +310,8 @@ void DrawWorld() {
 
     for (auto* entity : entities) {
         DrawTexturePro(entity->texture, entity->subTex, entity->rec, (Vector2){entity->rec.width / 2.f, entity->rec.height / 2.f}, entity->rotation, WHITE);
-        Rectangle col = entity->GetCol();
-        //DrawRectangleRec(col,RED);
+        /*Rectangle col = entity->GetCol();
+        DrawRectangleRec(col,RED);*/
     }
 }
 
@@ -249,6 +324,11 @@ int main() {
     birdTex = LoadTexture("bird.png");
     pipeTex = LoadTexture("pipe.png");
     numberTex = LoadTexture("numbers.png");
+    dieMenuTex = LoadTexture("die-menu.png");
+    numberMediumTex = LoadTexture("numbers-medium.png");
+    numberSmallTex = LoadTexture("numbers-small.png");
+    buttonTex = LoadTexture("button.png");
+    startTex = LoadTexture("start.png");
 
     Camera2D camera = Camera2D {
         .target = Vector2{GetRenderWidth()/2.f,0.f},
@@ -260,11 +340,39 @@ int main() {
 
     std::string scoreText = "0";
 
+
     while(!WindowShouldClose()) {
         float dt = GetFrameTime();
 
-        UpdateWorld(dt);
+        Vector2 dieMenuPos = (Vector2) {
+            GetRenderWidth() / 2.f - (dieMenuTex.width * scale) / 2.f,
+            GetRenderHeight() / 2.f - (dieMenuTex.height * scale) / 2.f,
+        };
+        Rectangle OKButton = {
+            dieMenuPos.x+67*scale,
+            dieMenuPos.y+25*scale,
+            buttonSize.x*scale,
+            buttonSize.y*scale
+        };
+
+        if (paused && !playerDead) {
+            if(GetKeyPressed() != 0 || IsMouseButtonPressed(0)) paused = false; 
+        }
+
         camera.target.x = entities[0]->rec.x - GetRenderWidth()/2.f;
+        if (!paused && !playerDead) {
+            
+                UpdateWorld(dt);
+        }
+
+        if (playerDead) {
+            if (CheckCollisionPointRec(GetMousePosition(),OKButton) && IsMouseButtonPressed(0)) {
+                playerDead = false;
+                paused = true;
+                EndWorld();
+                StartWorld();
+            }
+        }
 
         BeginDrawing();
         ClearBackground(BLACK);
@@ -275,17 +383,55 @@ int main() {
 
         Font font = GetFontDefault();
 
-        scoreText = std::to_string(score);
-        int width = MeasureText(scoreText.c_str(),80);
-        
-        //DrawText(scoreText.c_str(),GetRenderWidth()/2.f-width/2.f,0,80,WHITE);
-        DrawNumber(score,GetRenderWidth()/2.f-width/2.f,10);
+        if (!playerDead && !paused) {
+            scoreText = std::to_string(score);
+            int width = MeasureText(scoreText.c_str(),80);
+            
+            DrawNumber(score,GetRenderWidth()/2.f-width/2.f,10,FONT_SIZE_BIG);
+        } else if (!playerDead && paused) {
+            Color bg = (Color){0,0,0,126};
+            DrawRectangle(0,0,GetRenderWidth(),GetRenderHeight(),bg);
+
+            Vector2 startPos = {
+                GetRenderWidth() / 2.f - (startTex.width * scale) / 2.f,
+                GetRenderHeight() * 0.5725 - (startTex.height * scale) / 2.f
+            };
+
+            DrawTextureEx(startTex, startPos, 0.f, scale, WHITE);
+
+        } else {
+            Color bg = (Color){0,0,0,126};
+            DrawRectangle(0,0,GetRenderWidth(),GetRenderHeight(),bg);
+
+            DrawTextureEx(dieMenuTex, dieMenuPos, 0.f, scale, WHITE);
+
+            int digScore = 0;
+            if (score < 10) digScore = 1;
+            else if (score < 100) digScore = 2;
+            else digScore = 3;
+            float x = (dieMenuPos.x + 37 * scale) - (digScore * GetFontSize(FONT_SIZE_MEDIUM).x * scale) / 2.f; 
+            DrawNumber(score,x,dieMenuPos.y+19*scale,FONT_SIZE_MEDIUM);
+
+            int digBest = 0;
+            if (best < 10) digBest = 1;
+            else if (best < 100) digBest = 2;
+            else digBest = 3;
+            float xBest = (dieMenuPos.x + 37 * scale) - (digBest * GetFontSize(FONT_SIZE_MEDIUM).x * scale) / 2.f; 
+            DrawNumber(best,xBest,dieMenuPos.y+41*scale,FONT_SIZE_MEDIUM);
+
+            DrawTexturePro(buttonTex, OK_BUTTON, OKButton, Vector2Zero(), 0.f, WHITE);
+        }
 
         EndDrawing();
     }
 
     EndWorld();
 
+    UnloadTexture(startTex);
+    UnloadTexture(buttonTex);
+    UnloadTexture(numberSmallTex);
+    UnloadTexture(numberMediumTex);
+    UnloadTexture(dieMenuTex);
     UnloadTexture(numberTex);
     UnloadTexture(pipeTex);
     UnloadTexture(birdTex);
