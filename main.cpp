@@ -231,9 +231,9 @@ void UpdateWorld(float dt) {
         playerDead = true;
     }
 
-    float positionX = entities[0]->GetCol().x + entities[0]->GetCol().width - DISTANCE_BETWEEN_PIPES;
-    score = (positionX) / DISTANCE_BETWEEN_PIPES;
-    if (score < 0) score = 0;
+    float positionX = entities[0]->GetCol().x + entities[0]->GetCol().width * 2;
+
+    score = (positionX - OFFSET_START_PIPE) / DISTANCE_BETWEEN_PIPES + 1;
 
     if (playerDead && best < score) {
         best = score;
