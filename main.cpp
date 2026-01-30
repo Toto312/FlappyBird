@@ -74,6 +74,10 @@ int best = 0;
 bool playerDead = false;
 bool paused = true;
 
+Sound jump;
+Sound dead;
+Sound newScore;
+
 enum class EntityType {
     Bird,
     Pipe
@@ -127,6 +131,7 @@ struct Player : public Entity {
 
         if (IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_UP) || IsMouseButtonPressed(0)) {
             timeClick = 0;
+            PlaySound(jump);
         }
 
         if (IsKeyPressed(KEY_P)) {
@@ -219,8 +224,12 @@ void EndWorld() {
     entities.clear();
 }
 
+int lastScore = 0;
+
 void UpdateWorld(float dt) {
-    if (paused) return;
+    if (paused) {
+        return;
+    }
 
     for (Entity* entity : entities) {
         entity->Update(dt);
@@ -245,6 +254,14 @@ void UpdateWorld(float dt) {
     float positionX = entities[0]->GetCol().x + entities[0]->GetCol().width * 2;
 
     score = (positionX - OFFSET_START_PIPE) / DISTANCE_BETWEEN_PIPES + 1;
+    if (lastScore != score && score != 0) {
+        lastScore = score;
+        PlaySound(newScore);
+    }
+
+    if (playerDead) {
+        PlaySound(dead);
+    }
 
     if (playerDead && best < score) {
         best = score;
@@ -333,6 +350,8 @@ int main() {
     InitWindow(static_cast<int>(nowRes.x), static_cast<int>(nowRes.y), "Flappy Bird");
     SetTargetFPS(60);
 
+    InitAudioDevice();
+
     bgTex = LoadTexture("bg.png");
     birdTex = LoadTexture("bird.png");
     pipeTex = LoadTexture("pipe.png");
@@ -342,6 +361,10 @@ int main() {
     numberSmallTex = LoadTexture("numbers-small.png");
     buttonTex = LoadTexture("button.png");
     startTex = LoadTexture("start.png");
+
+    jump = LoadSound("jump.wav");
+    dead = LoadSound("dead.wav");
+    newScore = LoadSound("coin.wav");
 
     Camera2D camera = Camera2D {
         .target = Vector2{GetRenderWidth()/2.f,0.f},
@@ -512,5 +535,10 @@ int main() {
     UnloadTexture(birdTex);
     UnloadTexture(bgTex);
 
+    UnloadSound(dead);
+    UnloadSound(jump);
+    UnloadSound(newScore);
+
+    CloseAudioDevice();
     CloseWindow();
 }
