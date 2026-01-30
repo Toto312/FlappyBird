@@ -69,6 +69,11 @@ static const Vector2 pipeSize = {
 static const Vector2 RESOLUTION = bgSize;
 static float scale = 4.f; 
 
+int score = 0;
+int best = 0;
+bool playerDead = false;
+bool paused = true;
+
 enum class EntityType {
     Bird,
     Pipe
@@ -103,6 +108,7 @@ struct Player : public Entity {
     float vel = 0.f;
     float timeClick = 1000.f;
     float maxTimeClick = 0.25f;
+    bool super = false;
 
     Player() {
         type = EntityType::Bird;
@@ -114,10 +120,17 @@ struct Player : public Entity {
     }
 
     void Update(float dt) override {
-        rec.x += PLAYER_SPEED * dt;
+        if (score < 100) rec.x += PLAYER_SPEED * dt;
+        else rec.x += PLAYER_SPEED * 1.8f * dt;
+
+        if (super) rec.x += PLAYER_SPEED * 30.f * dt;
 
         if (IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_UP) || IsMouseButtonPressed(0)) {
             timeClick = 0;
+        }
+
+        if (IsKeyPressed(KEY_P)) {
+            super = !super;
         }
 
         if (timeClick <= maxTimeClick) {
@@ -169,7 +182,7 @@ std::vector<Entity*> entities;
 static float OFFSET_START_PIPE = 500.f;
 static float DISTANCE_BETWEEN_PIPES = 125.f * scale;
 static float DISTANCE_FROM_PIPES = 100.f;
-static const int TOTAL_PIPES = 100;
+static const int TOTAL_PIPES = 200;
 
 void StartWorld() {
     entities.push_back(new Player());
@@ -180,9 +193,12 @@ void StartWorld() {
             (float)GetRandomValue(DISTANCE_FROM_PIPES,GetRenderHeight()-DISTANCE_FROM_PIPES)
         };
 
+        std::cout << i << ", " << position.x << "\n";
+
         float distance = DISTANCE_FROM_PIPES;
-        if (i >= 50 && i < 75) distance *= 0.9f;
-        else if (i >= 75) distance *= 0.85f;
+        if (i >= 100) {
+            distance *= 0.8f;
+        }
 
         Vector2 upPos = position, downPos = position;
         upPos.y += distance+(GREEN_PIPE_UP.height*scale);
@@ -203,11 +219,6 @@ void EndWorld() {
     entities.clear();
 }
 
-int score = 0;
-int best = 0;
-bool playerDead = false;
-bool paused = true;
-
 void UpdateWorld(float dt) {
     if (paused) return;
 
@@ -219,7 +230,7 @@ void UpdateWorld(float dt) {
 
         if (d < GetRenderWidth() && d > 0) {
             Rectangle player = entities[0]->GetCol(), curr = entity->GetCol();
-            if (CheckCollisionRecs(player,curr)) {
+            if (CheckCollisionRecs(player,curr) && !((Player*)entities[0])->super) {
                 playerDead = true;
             }
         }
@@ -227,7 +238,7 @@ void UpdateWorld(float dt) {
 
     Rectangle col = entities[0]->GetCol();
     if (col.y + col.height < 0 ||
-        col.y - col.height*2 > GetRenderHeight()) {
+        col.y - col.height*2 > GetRenderHeight() && !((Player*)entities[0])->super) {
         playerDead = true;
     }
 
@@ -292,7 +303,9 @@ void DrawNumber(int number, float x, float y, FontSize size) {
         };
 
         DrawTexturePro(tex, rec, dst, Vector2Zero(), 0.f, WHITE);
-        pos.x += numSize.x*scale*0.8;
+
+        if (number != FONT_SIZE_BIG) pos.x += numSize.x*scale*0.8;
+        else pos.x += numSize.x*scale;
 
         str++;
     }
@@ -340,6 +353,17 @@ int main() {
 
     std::string scoreText = "0";
 
+    bool did100Screen = false;
+    bool did1stMessage = false;
+    float firstMessageTime = 0;
+    const float FIRST_MESSAGE_WAIT = 1.5;
+    bool did2ndMessage = false;
+    float secondMessageTime = 0;
+    const float SECOND_MESSAGE_WAIT = 0.5;
+
+    float wonTimer = 0;
+    bool won = false;
+    const float WON_WAIT = 5;
 
     while(!WindowShouldClose()) {
         float dt = GetFrameTime();
@@ -360,8 +384,8 @@ int main() {
         }
 
         camera.target.x = entities[0]->rec.x - GetRenderWidth()/2.f;
-        if (!paused && !playerDead) {
-            
+        if (!paused && !playerDead && !won) {
+            if (score != 100 || did100Screen)
                 UpdateWorld(dt);
         }
 
@@ -388,18 +412,48 @@ int main() {
             int width = MeasureText(scoreText.c_str(),80);
             
             DrawNumber(score,GetRenderWidth()/2.f-width/2.f,10,FONT_SIZE_BIG);
-        } else if (!playerDead && paused) {
-            Color bg = (Color){0,0,0,126};
-            DrawRectangle(0,0,GetRenderWidth(),GetRenderHeight(),bg);
 
-            Vector2 startPos = {
-                GetRenderWidth() / 2.f - (startTex.width * scale) / 2.f,
-                GetRenderHeight() * 0.5725 - (startTex.height * scale) / 2.f
-            };
+            if (score == 100 && !did100Screen) {
+                paused = true;
+            }
 
-            DrawTextureEx(startTex, startPos, 0.f, scale, WHITE);
+        } if (!playerDead && paused) {
+            if (score == 100 && !did100Screen) {
+                DrawRectangle(0,0,GetRenderWidth(),GetRenderHeight(),BLACK);
 
-        } else {
+                if (!did1stMessage) {
+                    firstMessageTime += dt;
+                    Vector2 size = MeasureTextEx(font, "YOU WIN!", 30, 1);
+                    DrawTextEx(font, "YOU WIN!", Vector2{GetRenderWidth() / 2.f - size.x / 2.f, GetRenderHeight() / 2.f - size.y / 2.f}, 30, 1, WHITE);
+                }
+
+                did1stMessage = firstMessageTime >= FIRST_MESSAGE_WAIT;
+
+                if (did1stMessage && !did2ndMessage) {
+                    secondMessageTime += dt;
+                    Vector2 size = MeasureTextEx(font, "(for now)", 20, 1);
+                    DrawTextEx(font, "(for now)", Vector2{GetRenderWidth() / 2.f - size.x / 2.f, GetRenderHeight() / 2.f - size.y / 2.f}, 20, 1, WHITE);
+                }
+
+                did2ndMessage = secondMessageTime >= SECOND_MESSAGE_WAIT;
+                
+                if (did1stMessage && did2ndMessage) {
+                    paused = false;
+                    did100Screen = true;
+                }
+            }  else {
+                Color bg = (Color){0,0,0,126};
+                DrawRectangle(0,0,GetRenderWidth(),GetRenderHeight(),bg);
+
+                Vector2 startPos = {
+                    GetRenderWidth() / 2.f - (startTex.width * scale) / 2.f,
+                    GetRenderHeight() * 0.5725 - (startTex.height * scale) / 2.f
+                };
+
+                DrawTextureEx(startTex, startPos, 0.f, scale, WHITE);
+            }
+
+        } if (playerDead) {
             Color bg = (Color){0,0,0,126};
             DrawRectangle(0,0,GetRenderWidth(),GetRenderHeight(),bg);
 
@@ -420,6 +474,26 @@ int main() {
             DrawNumber(best,xBest,dieMenuPos.y+41*scale,FONT_SIZE_MEDIUM);
 
             DrawTexturePro(buttonTex, OK_BUTTON, OKButton, Vector2Zero(), 0.f, WHITE);
+        }
+
+        if (score == 200 && wonTimer < WON_WAIT) {
+            DrawRectangle(0,0,GetRenderWidth(),GetRenderHeight(),BLACK);
+            if (wonTimer < WON_WAIT) {
+                wonTimer += dt;
+                paused = true;
+                won = true;
+                Vector2 size = MeasureTextEx(font, "YOU WON! (for real this time)", 30, 1);
+                DrawTextEx(font, "YOU WON! (for real this time)", Vector2{GetRenderWidth() / 2.f - size.x / 2.f, GetRenderHeight() / 2.f - size.y / 2.f}, 30, 1, WHITE);
+            }
+
+            if (wonTimer >= WON_WAIT){
+                std::puts("yea");
+                playerDead = false;
+                paused = true;
+                won = false;
+                EndWorld();
+                StartWorld();
+            }
         }
 
         EndDrawing();
