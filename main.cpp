@@ -491,6 +491,7 @@ int main() {
                 playerDead = false;
                 paused = true;
                 won = false;
+                best = TOTAL_PIPES; 
                 EndWorld();
                 StartWorld();
             }
