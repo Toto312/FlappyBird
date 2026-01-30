@@ -362,9 +362,10 @@ int main() {
     buttonTex = LoadTexture("button.png");
     startTex = LoadTexture("start.png");
 
-    jump = LoadSound("jump.wav");
+    jump = LoadSound("jump2.wav");
     dead = LoadSound("dead.wav");
     newScore = LoadSound("coin.wav");
+    Sound win = LoadSound("win.wav");
 
     Camera2D camera = Camera2D {
         .target = Vector2{GetRenderWidth()/2.f,0.f},
@@ -501,6 +502,9 @@ int main() {
 
         if (score == 200 && wonTimer < WON_WAIT) {
             DrawRectangle(0,0,GetRenderWidth(),GetRenderHeight(),BLACK);
+            
+            if (wonTimer == 0) PlaySound(win);
+
             if (wonTimer < WON_WAIT) {
                 wonTimer += dt;
                 paused = true;
@@ -535,6 +539,7 @@ int main() {
     UnloadTexture(birdTex);
     UnloadTexture(bgTex);
 
+    UnloadSound(win);
     UnloadSound(dead);
     UnloadSound(jump);
     UnloadSound(newScore);
